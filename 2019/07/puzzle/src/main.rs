@@ -4,98 +4,98 @@ use permutator::Permutation;
 use std::io;
 use std::io::prelude::*;
 
-fn get_operand(operations: &[i32], mode: i32, i: usize) -> i32 {
+fn get_operand(memory: &[i32], mode: i32, i: usize) -> i32 {
     if mode == 1 {
-        operations[i]
+        memory[i]
     } else {
-        operations[operations[i] as usize]
+        memory[memory[i] as usize]
     }
 }
 
-fn get_output_position(operations: &[i32], mode: i32, i: usize) -> usize {
+fn get_output_position(memory: &[i32], mode: i32, i: usize) -> usize {
     assert!(mode == 0);
-    operations[i] as usize
+    memory[i] as usize
 }
 
-enum InputType {
-    PhaseSetting,
-    InputSignal,
+#[derive(PartialEq)]
+enum Output {
+    Halt(i32),
+    NeedsInput,
+    Signal(i32),
 }
 
-fn run<I: Fn() -> i32, O: FnMut(i32) -> ()>(
-    mut operations: Vec<i32>,
-    phase_setting: i32,
-    input: I,
-    mut output: O,
-) -> i32
-{
-    let mut i: usize = 0;
-    let mut input_type = InputType::PhaseSetting;
-    loop {
-        match (operations[i] / 100, operations[i] % 100) {
-            (0, 99) => return operations[0],
-            (mode, op) => {
-                let modes: [i32; 3] = [mode % 10, mode % 100 / 10, mode / 100];
-                modes
-                    .iter()
-                    .for_each(|mode| assert!(*mode == 0 || *mode == 1));
-                match op {
-                    1 | 2 => {
-                        let op1 = get_operand(&operations, modes[0], i + 1);
-                        let op2 = get_operand(&operations, modes[1], i + 2);
-                        let to = get_output_position(&operations, modes[2], i + 3);
-                        if op == 1 {
-                            operations[to] = op1 + op2;
-                        } else {
-                            operations[to] = op1 * op2;
-                        }
-                        i += 4;
-                    }
-                    3 => {
-                        let to = get_output_position(&operations, modes[0], i + 1);
-                        operations[to] = match input_type {
-                            InputType::PhaseSetting => {
-                                input_type = InputType::InputSignal;
-                                phase_setting
+struct State {
+    memory: Vec<i32>,
+    input: Option<i32>,
+    ip: usize,
+}
+
+impl State {
+    fn run(&mut self) -> Output {
+        loop {
+            match (self.memory[self.ip] / 100, self.memory[self.ip] % 100) {
+                (0, 99) => return Output::Halt(self.memory[0]),
+                (mode, op) => {
+                    let modes: [i32; 3] = [mode % 10, mode % 100 / 10, mode / 100];
+                    modes
+                        .iter()
+                        .for_each(|mode| assert!(*mode == 0 || *mode == 1));
+                    match op {
+                        1 | 2 => {
+                            let op1 = get_operand(&self.memory, modes[0], self.ip + 1);
+                            let op2 = get_operand(&self.memory, modes[1], self.ip + 2);
+                            let to = get_output_position(&self.memory, modes[2], self.ip + 3);
+                            if op == 1 {
+                                self.memory[to] = op1 + op2;
+                            } else {
+                                self.memory[to] = op1 * op2;
                             }
-                            InputType::InputSignal => input(),
-                        };
-                        i += 2;
-                    }
-                    4 => {
-                        let to = get_operand(&operations, modes[0], i + 1);
-                        output(to);
-                        i += 2;
-                    }
-                    5 | 6 => {
-                        let cond = get_operand(&operations, modes[0], i + 1);
-                        let destination = get_operand(&operations, modes[1], i + 2);
-                        if (op == 5 && cond != 0) || (op == 6 && cond == 0) {
-                            i = destination as usize;
-                        } else {
-                            i += 3;
+                            self.ip += 4;
                         }
-                    }
-                    7 | 8 => {
-                        let op1 = get_operand(&operations, modes[0], i + 1);
-                        let op2 = get_operand(&operations, modes[1], i + 2);
-                        let to = get_output_position(&operations, modes[2], i + 3);
-                        if (op == 7 && op1 < op2) || (op == 8 && op1 == op2) {
-                            operations[to] = 1;
-                        } else {
-                            operations[to] = 0;
+                        3 => {
+                            if self.input.is_none() {
+                                return Output::NeedsInput;
+                            }
+                            let to = get_output_position(&self.memory, modes[0], self.ip + 1);
+                            self.memory[to] = self.input.unwrap();
+                            self.input = None;
+                            self.ip += 2;
                         }
-                        i += 4;
-                    }
-                    _ => panic!(),
-                };
-            }
-        };
+                        4 => {
+                            let to = get_operand(&self.memory, modes[0], self.ip + 1);
+                            self.ip += 2;
+                            return Output::Signal(to);
+                        }
+                        5 | 6 => {
+                            let cond = get_operand(&self.memory, modes[0], self.ip + 1);
+                            let destination = get_operand(&self.memory, modes[1], self.ip + 2);
+                            if (op == 5 && cond != 0) || (op == 6 && cond == 0) {
+                                self.ip = destination as usize;
+                            } else {
+                                self.ip += 3;
+                            }
+                        }
+                        7 | 8 => {
+                            let op1 = get_operand(&self.memory, modes[0], self.ip + 1);
+                            let op2 = get_operand(&self.memory, modes[1], self.ip + 2);
+                            let to = get_output_position(&self.memory, modes[2], self.ip + 3);
+                            if (op == 7 && op1 < op2) || (op == 8 && op1 == op2) {
+                                self.memory[to] = 1;
+                            } else {
+                                self.memory[to] = 0;
+                            }
+                            self.ip += 4;
+                        }
+                        _ => panic!(),
+                    };
+                }
+            };
+        }
     }
 }
 
 fn main() {
-    let operations: Vec<i32> = io::stdin()
+    let memory: Vec<i32> = io::stdin()
         .lock()
         .lines()
         .map(|line| {
@@ -107,19 +107,48 @@ fn main() {
         .flatten()
         .collect();
     let phase_settings = &mut [0, 1, 2, 3, 4];
-    let mut max_signal: i32 = 0;
+    let mut max_signal = 0;
     for phase_setting in phase_settings.permutation() {
-        run(operations.to_vec(), phase_setting[0], || 0, |signal: i32| {
-            run(operations.to_vec(), phase_setting[1], || signal, |signal: i32| {
-                run(operations.to_vec(), phase_setting[2], || signal, |signal: i32| {
-                    run(operations.to_vec(), phase_setting[3], || signal, |signal: i32| {
-                        run(operations.to_vec(), phase_setting[4], || signal, |signal: i32| {
-                            max_signal = std::cmp::max(signal, max_signal);
-                        });
-                    });
-                });
-            });
-        });
+        let mut amplifiers = phase_setting
+            .iter()
+            .map(|ps| State { memory: memory.to_vec(), input: Some(*ps), ip: 0 })
+            .collect::<Vec<State>>();
+        let result = amplifiers[0].run();
+        assert!(result == Output::NeedsInput);
+        amplifiers[0].input = Some(0);
+        let signal = match amplifiers[0].run() {
+            Output::Signal(s) => s,
+            _ => panic!()
+        };
+        let result = amplifiers[1].run();
+        assert!(result == Output::NeedsInput);
+        amplifiers[1].input = Some(signal);
+        let signal = match amplifiers[1].run() {
+            Output::Signal(s) => s,
+            _ => panic!()
+        };
+        let result = amplifiers[2].run();
+        assert!(result == Output::NeedsInput);
+        amplifiers[2].input = Some(signal);
+        let signal = match amplifiers[2].run() {
+            Output::Signal(s) => s,
+            _ => panic!()
+        };
+        let result = amplifiers[3].run();
+        assert!(result == Output::NeedsInput);
+        amplifiers[3].input = Some(signal);
+        let signal = match amplifiers[3].run() {
+            Output::Signal(s) => s,
+            _ => panic!()
+        };
+        let result = amplifiers[4].run();
+        assert!(result == Output::NeedsInput);
+        amplifiers[4].input = Some(signal);
+        match amplifiers[4].run() {
+            Output::Signal(s) => max_signal = std::cmp::max(max_signal, s),
+            _ => panic!()
+        };
+
     }
     println!("{}", max_signal);
 }
