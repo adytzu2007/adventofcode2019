@@ -17,7 +17,7 @@ fn get_output_position(memory: &[i32], mode: i32, i: usize) -> usize {
     memory[i] as usize
 }
 
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 enum Output {
     Halt(i32),
     NeedsInput,
@@ -106,48 +106,54 @@ fn main() {
         })
         .flatten()
         .collect();
-    let phase_settings = &mut [0, 1, 2, 3, 4];
+    let phase_settings = &mut [5, 6, 7, 8, 9];
     let mut max_signal = 0;
     for phase_setting in phase_settings.permutation() {
         let mut amplifiers = phase_setting
             .iter()
             .map(|ps| State { memory: memory.to_vec(), input: Some(*ps), ip: 0 })
             .collect::<Vec<State>>();
-        let result = amplifiers[0].run();
-        assert!(result == Output::NeedsInput);
-        amplifiers[0].input = Some(0);
-        let signal = match amplifiers[0].run() {
-            Output::Signal(s) => s,
-            _ => panic!()
-        };
-        let result = amplifiers[1].run();
-        assert!(result == Output::NeedsInput);
-        amplifiers[1].input = Some(signal);
-        let signal = match amplifiers[1].run() {
-            Output::Signal(s) => s,
-            _ => panic!()
-        };
-        let result = amplifiers[2].run();
-        assert!(result == Output::NeedsInput);
-        amplifiers[2].input = Some(signal);
-        let signal = match amplifiers[2].run() {
-            Output::Signal(s) => s,
-            _ => panic!()
-        };
-        let result = amplifiers[3].run();
-        assert!(result == Output::NeedsInput);
-        amplifiers[3].input = Some(signal);
-        let signal = match amplifiers[3].run() {
-            Output::Signal(s) => s,
-            _ => panic!()
-        };
-        let result = amplifiers[4].run();
-        assert!(result == Output::NeedsInput);
-        amplifiers[4].input = Some(signal);
-        match amplifiers[4].run() {
-            Output::Signal(s) => max_signal = std::cmp::max(max_signal, s),
-            _ => panic!()
-        };
+        let mut signal = 0;
+        loop {
+            match amplifiers[0].run() {
+                Output::Halt(_) => { max_signal = std::cmp::max(max_signal, signal); break; },
+                Output::NeedsInput => {},
+                _ => panic!()
+            };
+            amplifiers[0].input = Some(signal);
+            signal = match amplifiers[0].run() {
+                Output::Signal(s) => s,
+                _ => panic!()
+            };
+            let result = amplifiers[1].run();
+            assert!(result == Output::NeedsInput);
+            amplifiers[1].input = Some(signal);
+            signal = match amplifiers[1].run() {
+                Output::Signal(s) => s,
+                _ => panic!()
+            };
+            let result = amplifiers[2].run();
+            assert!(result == Output::NeedsInput);
+            amplifiers[2].input = Some(signal);
+            signal = match amplifiers[2].run() {
+                Output::Signal(s) => s,
+                _ => panic!()
+            };
+            let result = amplifiers[3].run();
+            assert!(result == Output::NeedsInput);
+            amplifiers[3].input = Some(signal);
+            signal = match amplifiers[3].run() {
+                Output::Signal(s) => s,
+                _ => panic!()
+            };
+            let result = amplifiers[4].run();
+            assert!(result == Output::NeedsInput);
+            amplifiers[4].input = Some(signal);
+            signal = match amplifiers[4].run() {
+                Output::Signal(s) => s,
+                _ => panic!()
+            };
+        }
 
     }
     println!("{}", max_signal);
