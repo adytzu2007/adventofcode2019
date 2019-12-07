@@ -1,5 +1,6 @@
-extern crate clap;
+extern crate permutator;
 
+use permutator::Permutation;
 use std::io;
 use std::io::prelude::*;
 
@@ -16,16 +17,28 @@ fn get_output_position(operations: &[i32], mode: i32, i: usize) -> usize {
     operations[i] as usize
 }
 
-fn run<I: FnOnce() -> i32, O: FnOnce(i32) -> ()>(operations: &mut Vec<i32>, input: I, output: O) -> i32
-where I: Copy, O: Copy
+enum InputType {
+    PhaseSetting,
+    InputSignal,
+}
+
+fn run<I: Fn() -> i32, O: FnMut(i32) -> ()>(
+    mut operations: Vec<i32>,
+    phase_setting: i32,
+    input: I,
+    mut output: O,
+) -> i32
 {
     let mut i: usize = 0;
+    let mut input_type = InputType::PhaseSetting;
     loop {
         match (operations[i] / 100, operations[i] % 100) {
             (0, 99) => return operations[0],
             (mode, op) => {
                 let modes: [i32; 3] = [mode % 10, mode % 100 / 10, mode / 100];
-                modes.iter().for_each(|mode| assert!(*mode == 0 || *mode == 1));
+                modes
+                    .iter()
+                    .for_each(|mode| assert!(*mode == 0 || *mode == 1));
                 match op {
                     1 | 2 => {
                         let op1 = get_operand(&operations, modes[0], i + 1);
@@ -37,17 +50,23 @@ where I: Copy, O: Copy
                             operations[to] = op1 * op2;
                         }
                         i += 4;
-                    },
+                    }
                     3 => {
                         let to = get_output_position(&operations, modes[0], i + 1);
-                        operations[to] = input();
+                        operations[to] = match input_type {
+                            InputType::PhaseSetting => {
+                                input_type = InputType::InputSignal;
+                                phase_setting
+                            }
+                            InputType::InputSignal => input(),
+                        };
                         i += 2;
-                    },
+                    }
                     4 => {
                         let to = get_operand(&operations, modes[0], i + 1);
                         output(to);
                         i += 2;
-                    },
+                    }
                     5 | 6 => {
                         let cond = get_operand(&operations, modes[0], i + 1);
                         let destination = get_operand(&operations, modes[1], i + 2);
@@ -56,7 +75,7 @@ where I: Copy, O: Copy
                         } else {
                             i += 3;
                         }
-                    },
+                    }
                     7 | 8 => {
                         let op1 = get_operand(&operations, modes[0], i + 1);
                         let op2 = get_operand(&operations, modes[1], i + 2);
@@ -67,16 +86,16 @@ where I: Copy, O: Copy
                             operations[to] = 0;
                         }
                         i += 4;
-                    },
-                    _ => panic!()
+                    }
+                    _ => panic!(),
                 };
-            },
+            }
         };
     }
 }
 
 fn main() {
-    let mut operations: Vec<i32> = io::stdin()
+    let operations: Vec<i32> = io::stdin()
         .lock()
         .lines()
         .map(|line| {
@@ -87,10 +106,20 @@ fn main() {
         })
         .flatten()
         .collect();
-    let matches = clap::App::new("INTCODE machine")
-        .version("1.0")
-        .arg_from_usage("--input [INT] 'input to give to the machine'")
-        .get_matches();
-    let input = matches.value_of("input").map_or(5, |s| s.parse::<i32>().unwrap());
-    println!("{}", run(&mut operations, || input, |i| println!("{}", i)));
+    let phase_settings = &mut [0, 1, 2, 3, 4];
+    let mut max_signal: i32 = 0;
+    for phase_setting in phase_settings.permutation() {
+        run(operations.to_vec(), phase_setting[0], || 0, |signal: i32| {
+            run(operations.to_vec(), phase_setting[1], || signal, |signal: i32| {
+                run(operations.to_vec(), phase_setting[2], || signal, |signal: i32| {
+                    run(operations.to_vec(), phase_setting[3], || signal, |signal: i32| {
+                        run(operations.to_vec(), phase_setting[4], || signal, |signal: i32| {
+                            max_signal = std::cmp::max(signal, max_signal);
+                        });
+                    });
+                });
+            });
+        });
+    }
+    println!("{}", max_signal);
 }
