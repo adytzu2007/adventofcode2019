@@ -102,7 +102,6 @@ fn main() {
     }
     map[coords.1][coords.0] = 3;
     println!("{}", max);
-    pretty_print(&map);
     let mut slopes = BTreeSet::new();
     for l in 0..map.len() {
         for c in 0..map[l].len() {
@@ -117,15 +116,12 @@ fn main() {
         match it.next() {
             None => it = slopes.iter(),
             Some((_, s)) => {
-                dbg!(s);
                 let mut xp = coords.0 + s.0 * s.1 as usize;
                 let mut yp = coords.1 + s.2 * s.3 as usize;
                 while xp < map[0].len() && yp < map.len() {
                     if map[yp][xp] == 1 {
                         vaporized += 1;
                         map[yp][xp] = 2;
-                        eprintln!("{} {}", xp, yp);
-                        pretty_print(&map);
                         if vaporized == 200 {
                             println!("{}", xp * 100 + yp);
                             break 'outer;
