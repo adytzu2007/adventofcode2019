@@ -169,25 +169,35 @@ fn main() {
         })
         .flatten()
         .collect();
-    let mut robot = State::new(&memory, 0);
+    let mut robot = State::new(&memory, 1);
     let mut d: (i8, i8) = (0, 1);
     let mut position: (i64, i64) = (0, 0);
     let mut panels: BTreeMap<(i64, i64), i64> = BTreeMap::new();
+    panels.insert(position, 1);
+    let mut min: (i64, i64) = (100, 100);
+    let mut max: (i64, i64) = (0, 0);
     let mut turn = Action::Paint;
     loop {
         match robot.run() {
-            Output::Value(v) => turn = match (turn, v) {
-                (Action::Paint, v) => {panels.insert(position, v); Action::Move}
-                (Action::Move, v) => {
-                    if v == 0 {
-                        d = turn_left(d);
-                    } else {
-                        d = turn_right(d);
+            Output::Value(v) => {
+                turn = match (turn, v) {
+                    (Action::Paint, v) => {
+                        min = (std::cmp::min(min.0, position.0), std::cmp::min(min.1, position.1));
+                        max = (std::cmp::max(max.0, position.0), std::cmp::max(max.1, position.1));
+                        panels.insert(position, v);
+                        Action::Move
                     }
-                    position = (position.0 + d.0 as i64, position.1 + d.1 as i64);
-                    Action::Paint
+                    (Action::Move, v) => {
+                        if v == 0 {
+                            d = turn_left(d);
+                        } else {
+                            d = turn_right(d);
+                        }
+                        position = (position.0 + d.0 as i64, position.1 + d.1 as i64);
+                        Action::Paint
+                    }
                 }
-            },
+            }
             Output::Halt(v) => {
                 println!("Halt {}", v);
                 break;
@@ -197,5 +207,16 @@ fn main() {
             }
         }
     }
-    println!("{}", panels.len())
+    for y in (min.1..max.1+1).rev() {
+        for x in min.0..max.0+1 {
+            print!(
+                "{}",
+                panels
+                    .get(&(x, y))
+                    .map(|v| if *v == 1 { '#' } else { ' ' })
+                    .unwrap_or(' ')
+            );
+        }
+        println!("");
+    }
 }
