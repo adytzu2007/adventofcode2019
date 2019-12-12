@@ -2,29 +2,19 @@ extern crate itertools;
 extern crate num;
 
 use itertools::Itertools;
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::io;
 use std::io::prelude::*;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct Moon {
-    x: i64,
-    y: i64,
-    z: i64,
-    dx: i64,
-    dy: i64,
-    dz: i64,
+    coords: [(i64, i64); 3],
 }
 
 impl Moon {
     fn new(x: i64, y: i64, z: i64) -> Moon {
         Moon {
-            x: x,
-            y: y,
-            z: z,
-            dx: 0,
-            dy: 0,
-            dz: 0,
+            coords: [(x, 0), (y, 0), (z, 0)],
         }
     }
 }
@@ -36,22 +26,23 @@ fn print_moons(moons: &Vec<Moon>) {
 }
 
 fn apply_gravity(m1: &mut Moon, m2: &mut Moon) {
-    let changes = [m1.x - m2.x, m1.y - m2.y, m1.z - m2.z]
+    let changes = m1
+        .coords
         .iter()
-        .map(|d| num::clamp(*d, -1, 1))
+        .zip(m2.coords.iter())
+        .map(|pair| (pair.0).0 - (pair.1).0)
+        .map(|change| num::clamp(change, -1, 1))
         .collect::<Vec<i64>>();
-    m1.dx -= changes[0];
-    m2.dx += changes[0];
-    m1.dy -= changes[1];
-    m2.dy += changes[1];
-    m1.dz -= changes[2];
-    m2.dz += changes[2];
+    for i in 0..changes.len() {
+        m1.coords[i].1 -= changes[i];
+        m2.coords[i].1 += changes[i];
+    }
 }
 
 fn apply_velocity(moon: &mut Moon) {
-    moon.x += moon.dx;
-    moon.y += moon.dy;
-    moon.z += moon.dz;
+    for coord in &mut moon.coords {
+        coord.0 += coord.1;
+    }
 }
 
 fn do_step(moons: &mut Vec<Moon>) {
@@ -68,11 +59,11 @@ fn do_step(moons: &mut Vec<Moon>) {
 }
 
 fn main() {
-    let mut moons: Vec<Moon> = io::stdin()
+    let moons: Vec<Moon> = io::stdin()
         .lock()
         .lines()
         .map(|line| {
-            let mut coords: BTreeMap<String, i64> = BTreeMap::new();
+            let mut coords: HashMap<String, i64> = HashMap::new();
             line.unwrap()
                 .trim_start_matches("<")
                 .trim_end_matches(">")
@@ -88,13 +79,52 @@ fn main() {
             )
         })
         .collect();
-    for step in 0..1000 {
-        do_step(&mut moons);
-    }
-    println!("{}", moons.iter()
-        .map(|moon| {
-            (moon.x.abs() + moon.y.abs() + moon.z.abs())
-                * (moon.dx.abs() + moon.dy.abs() + moon.dz.abs())
+    let mut cycles: HashMap<usize, (u64, u64)> = HashMap::new();
+    let mut steps = 0;
+    let mut simulated_moons = moons.to_vec();
+    let mut positions = moons[0]
+        .coords
+        .iter()
+        .map(|_| HashMap::new())
+        .collect::<Vec<HashMap<Vec<(i64, i64)>, u64>>>();
+    let mut single_coords = (0..moons[0].coords.len())
+        .map(|i| {
+            simulated_moons
+                .iter()
+                .map(|moon| moon.coords[i])
+                .collect::<Vec<(i64, i64)>>()
         })
-        .fold(0, |acc, x| acc + x));
+        .collect::<Vec<Vec<(i64, i64)>>>();
+
+    loop {
+        for (i, single_coord) in single_coords.iter().enumerate() {
+            positions[i].insert(single_coord.to_vec(), steps);
+        }
+
+        steps += 1;
+        do_step(&mut simulated_moons);
+        single_coords = (0..moons[0].coords.len())
+            .map(|i| {
+                simulated_moons
+                    .iter()
+                    .map(|moon| moon.coords[i])
+                    .collect::<Vec<(i64, i64)>>()
+            })
+            .collect();
+
+        for (i, single_coord) in single_coords.iter().enumerate() {
+            if cycles.get(&i).is_none() {
+                if let Some(previous_steps) = positions[i].get(single_coord) {
+                    cycles.insert(i, (*previous_steps, steps - previous_steps));
+                }
+            }
+        }
+        if cycles.len() == 3 {
+            break;
+        }
+    }
+    println!(
+        "{}",
+        num::integer::lcm(num::integer::lcm(cycles[&0].1, cycles[&1].1), cycles[&2].1)
+    );
 }
