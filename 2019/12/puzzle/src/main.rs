@@ -1,4 +1,3 @@
-extern crate itertools;
 extern crate num;
 
 use itertools::Itertools;
@@ -45,8 +44,8 @@ fn apply_velocity(moon: &mut Moon) {
     }
 }
 
-fn do_step(moons: &mut Vec<Moon>) {
-    for c in (0..moons.len()).combinations(2) {
+fn do_step(moons: &mut Vec<Moon>, combos: &Vec<Vec<usize>>) {
+    for c in combos {
         let mut m1 = moons[c[0]];
         let mut m2 = moons[c[1]];
         apply_gravity(&mut m1, &mut m2);
@@ -79,52 +78,32 @@ fn main() {
             )
         })
         .collect();
-    let mut cycles: HashMap<usize, (u64, u64)> = HashMap::new();
+    let combos = (0..moons.len()).combinations(2).collect();
+
+    let mut cycles: Vec<Option<u64>> = vec![None, None, None];
     let mut steps = 0;
     let mut simulated_moons = moons.to_vec();
-    let mut positions = moons[0]
-        .coords
-        .iter()
-        .map(|_| HashMap::new())
-        .collect::<Vec<HashMap<Vec<(i64, i64)>, u64>>>();
-    let mut single_coords = (0..moons[0].coords.len())
-        .map(|i| {
-            simulated_moons
-                .iter()
-                .map(|moon| moon.coords[i])
-                .collect::<Vec<(i64, i64)>>()
-        })
-        .collect::<Vec<Vec<(i64, i64)>>>();
+    let mut found = 0;
 
     loop {
-        for (i, single_coord) in single_coords.iter().enumerate() {
-            positions[i].insert(single_coord.to_vec(), steps);
-        }
-
         steps += 1;
-        do_step(&mut simulated_moons);
-        single_coords = (0..moons[0].coords.len())
-            .map(|i| {
-                simulated_moons
-                    .iter()
-                    .map(|moon| moon.coords[i])
-                    .collect::<Vec<(i64, i64)>>()
-            })
-            .collect();
+        do_step(&mut simulated_moons, &combos);
 
-        for (i, single_coord) in single_coords.iter().enumerate() {
-            if cycles.get(&i).is_none() {
-                if let Some(previous_steps) = positions[i].get(single_coord) {
-                    cycles.insert(i, (*previous_steps, steps - previous_steps));
+        for i in 0..3 {
+            if cycles[i].is_none() {
+                if simulated_moons.iter().zip(moons.iter()).
+                    map(|pair| pair.0.coords[i] == pair.1.coords[i])
+                        .fold(true, |acc, x| acc && x) {
+                    cycles[i] = Some(steps);
+                    found += 1;
                 }
             }
         }
-        if cycles.len() == 3 {
+        if found == 3 {
             break;
         }
     }
     println!(
         "{}",
-        num::integer::lcm(num::integer::lcm(cycles[&0].1, cycles[&1].1), cycles[&2].1)
-    );
+        cycles.iter().map(|o| o.unwrap()).fold(1, |acc, x| num::integer::lcm(acc, x)));
 }
