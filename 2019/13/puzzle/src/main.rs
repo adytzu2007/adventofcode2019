@@ -1,3 +1,5 @@
+extern crate num;
+
 use std::collections::BTreeMap;
 use std::io;
 use std::io::prelude::*;
@@ -129,7 +131,26 @@ impl State {
 enum Action {
     X,
     Y,
-    Tile
+    Tile,
+    YScore,
+    Score,
+}
+
+fn print_screen(screen: &BTreeMap<(i64, i64), i64>, width: i64, height: i64) {
+    for i in 0..height {
+        for j in 0..width {
+            match screen.get(&(j, i)) {
+                None => eprint!(" "),
+                Some(0) => eprint!(" "),
+                Some(1) => eprint!("+"),
+                Some(2) => eprint!("#"),
+                Some(3) => eprint!("="),
+                Some(4) => eprint!("o"),
+                Some(v) => panic!(dbg!(*v))
+            }
+        }
+        eprintln!("");
+    }
 }
 
 fn main() {
@@ -145,38 +166,62 @@ fn main() {
         .flatten()
         .collect();
     let mut arcade = State::new(&memory, 1);
+    arcade.memory.insert(0, 2); // free play
     let mut screen: BTreeMap<(i64, i64), i64> = BTreeMap::new();
     let mut turn = Action::X;
     let mut coords: Vec<i64> = vec![];
-    let mut block_tiles = 0;
+    let mut score = 0;
+    let mut max_x = 0;
+    let mut max_y = 0;
+    let mut ball_x = 0;
+    let mut paddle_x = 0;
+
     loop {
         match arcade.run() {
             Output::Value(v) => {
                 turn = match (turn, v) {
+                    (Action::X, -1) => {
+                        Action::YScore
+                    },
+                    (Action::YScore, 0) => {
+                        Action::Score
+                    },
+                    (Action::Score, v) => {
+                        score = v;
+                        Action::X
+                    }
                     (Action::X, v) => {
+                        max_x = std::cmp::max(max_x, v);
                         coords.push(v);
                         Action::Y
                     },
                     (Action::Y, v) => {
+                        max_y = std::cmp::max(max_y, v);
                         coords.push(v);
                         Action::Tile
                     },
                     (Action::Tile, v) => {
                         screen.insert((coords[0], coords[1]), v);
-                        if v == 2 {
-                            block_tiles += 1;
+                        if v == 4 {
+                            ball_x = coords[0];
+                        } else if v == 3 {
+                            paddle_x = coords[0];
                         }
                         coords.clear();
                         Action::X
-                    }
+                    },
+                    _ => panic!()
                 }
             }
             Output::Halt(v) => {
                 println!("Halt {}", v);
                 break;
             },
-            Output::NeedsInput => panic!()
+            Output::NeedsInput => {
+                //print_screen(&screen, max_x + 1, max_y + 1);
+                arcade.input = Some(num::clamp(ball_x - paddle_x, -1, 1));
+            }
         }
     }
-    println!("{}", block_tiles);
+    println!("{}", score);
 }
