@@ -1,9 +1,9 @@
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::io;
 use std::io::prelude::*;
 
-fn get_bill_of_materials(bill: &str) -> BTreeMap<String, u64> {
-    let mut bill_of_materials = BTreeMap::new();
+fn get_bill_of_materials(bill: &str) -> HashMap<String, u64> {
+    let mut bill_of_materials = HashMap::new();
     bill.split(",").for_each(|s| {
         let component: Vec<&str> = s.split_whitespace().collect();
         bill_of_materials.insert(
@@ -15,62 +15,62 @@ fn get_bill_of_materials(bill: &str) -> BTreeMap<String, u64> {
 }
 
 fn expand_material(
-    bill_of_materials: &BTreeMap<String, u64>,
+    bills_of_materials: &HashMap<String, (u64, HashMap<String, u64>)>,
+    bill_of_materials: &mut HashMap<String, u64>,
     material: &String,
-    material_bill: &BTreeMap<String, u64>,
-    min_count: u64,
-    needed_count: u64,
-) -> BTreeMap<String, u64> {
-    let mut new_bill_of_materials = bill_of_materials.clone();
-    new_bill_of_materials.remove(material);
-    material_bill.iter().for_each(|(material, c)| {
-        *new_bill_of_materials
-            .entry(material.to_string())
-            .or_insert(0) += c * ((needed_count + min_count - 1) / min_count);
+    mut need: u64,
+    excess: &mut HashMap<String, u64>,
+) {
+    bill_of_materials.remove(material);
+    let (get, material_bill) = bills_of_materials.get(material).unwrap();
+    let mut excess_material = excess.entry(material.to_string()).or_insert(0);
+    if need <= *excess_material {
+        *excess_material -= need;
+        return;
+    }
+    need -= *excess_material;
+    let reactions = (need + get - 1) / get;
+    *excess_material = reactions * get - need;
+    material_bill.iter().for_each(|(material, material_need)| {
+        *bill_of_materials.entry(material.to_string()).or_insert(0) +=
+            material_need * reactions;
     });
-    new_bill_of_materials
 }
 
 fn get_ores(
-    cache: &mut BTreeMap<BTreeMap<String, u64>, Option<u64>>,
-    bills_of_materials: &BTreeMap<String, (u64, BTreeMap<String, u64>)>,
-    bill_of_materials: BTreeMap<String, u64>,
-) -> Option<u64> {
-    if cache.contains_key(&bill_of_materials) {
-        *cache.get(&bill_of_materials).unwrap()
-    } else {
-        let result = if bill_of_materials.len() == 1 && bill_of_materials.get("ORE").is_some() {
-            Some(*bill_of_materials.get("ORE").unwrap())
-        } else {
-            bill_of_materials
-                .iter()
-                .map(
-                    |(material, needed_count)| match bills_of_materials.get(material) {
-                        Some((min_count, material_bill)) => get_ores(
-                            cache,
-                            bills_of_materials,
-                            expand_material(
-                                &bill_of_materials,
-                                material,
-                                material_bill,
-                                *min_count,
-                                *needed_count,
-                            ),
-                        ),
-                        None => None,
-                    },
-                )
-                .filter(|x| x.is_some())
-                .min()
-                .unwrap_or(None)
-        };
-        cache.insert(bill_of_materials, result);
-        result
+    bills_of_materials: &HashMap<String, (u64, HashMap<String, u64>)>,
+    material: &str,
+    need: u64
+) -> u64 {
+    let mut excess: HashMap<String, u64> = HashMap::new();
+    let mut bill_of_materials: HashMap<String, u64> = HashMap::new();
+    bill_of_materials.insert(material.to_string(), need);
+    loop {
+        if bill_of_materials.len() == 1 && bill_of_materials.get("ORE").is_some() {
+            return *bill_of_materials.get("ORE").unwrap();
+        }
+        let (material, needed_count) = bill_of_materials
+            .remove_entry(
+                &bill_of_materials
+                    .keys()
+                    .filter(|k| k != &"ORE")
+                    .nth(0)
+                    .unwrap()
+                    .to_string(),
+            )
+            .unwrap();
+        expand_material(
+            bills_of_materials,
+            &mut bill_of_materials,
+            &material,
+            needed_count,
+            &mut excess,
+        );
     }
 }
 
 fn main() {
-    let mut bills_of_materials: BTreeMap<String, (u64, BTreeMap<String, u64>)> = BTreeMap::new();
+    let mut bills_of_materials: HashMap<String, (u64, HashMap<String, u64>)> = HashMap::new();
     io::stdin().lock().lines().for_each(|line| {
         line.map(|l| {
             let bill: Vec<&str> = l.split("=>").collect();
@@ -85,9 +85,22 @@ fn main() {
         })
         .unwrap();
     });
-    let (count, bill_of_materials) = bills_of_materials.get("FUEL").unwrap();
-    assert!(*count == 1);
-    let mut cache: BTreeMap<BTreeMap<String, u64>, Option<u64>> = BTreeMap::new();
-    let result = get_ores(&mut cache, &bills_of_materials, bill_of_materials.clone());
-    println!("{:?}", result);
+    let ore_per_fuel = get_ores(&bills_of_materials, "FUEL", 1) as i64;
+    println!("{}", ore_per_fuel);
+    let available_ore = 1000000000000;
+    let mut left = 1;
+    let mut right = available_ore;
+    assert!(get_ores(&bills_of_materials, "FUEL", right as u64) > available_ore as u64);
+    loop {
+        let mid = (left + right) / 2;
+        let result = get_ores(&bills_of_materials, "FUEL", mid as u64) as i64 - available_ore;
+        if result > 0 {
+            right = mid;
+        } else if result < -ore_per_fuel {
+            left = mid;
+        } else {
+            println!("{}", mid);
+            break;
+        }
+    }
 }
