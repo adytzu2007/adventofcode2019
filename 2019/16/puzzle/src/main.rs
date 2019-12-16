@@ -18,31 +18,17 @@ fn main() {
         })
         .flatten()
         .collect();
+    dbg!(sequence.len());
+    let offset: usize = dbg!(sequence[0..7].iter().fold(0, |acc, x| acc * 10 + *x as usize));
+    sequence = repeat_n(sequence, 10000).flatten().collect::<Vec<i32>>()[offset..].to_vec();
     for _phase in 0..100 {
+        let mut sum = sequence.iter().fold(0, |acc, x| acc + x);
         sequence = (0..sequence.len())
-            .map(|i| {
-                let mut sum = 0;
-                let mut start = 0;
-                loop {
-                    let mut range = &sequence[start..];
-                    if range.len() == 0 {
-                        break;
-                    }
-                    repeat_n(0, i + 1)
-                        .chain(
-                            repeat_n(1, i + 1).chain(repeat_n(0, i + 1).chain(repeat_n(-1, i + 1))),
-                        ).skip(if start == 0 { 1 } else { 0 })
-                        .zip(range.iter())
-                        .for_each(|(p, d)| {
-                            sum += d * p;
-                            start += 1;
-                        });
-                }
-                sum.abs() % 10
-            })
+            .map(|i| { sum -= sequence[i]; sum + sequence[i] })
+            .map(|x| x.abs() % 10)
             .collect::<Vec<i32>>();
     }
-    for i in sequence {
+    for i in &sequence[0..8] {
         print!("{}", i);
     }
     println!("");
