@@ -178,6 +178,69 @@ fn left(d: (i64, i64)) -> (i64, i64) {
     }
 }
 
+fn split_commands(
+    commands: &str,
+    mut sequences: Vec<String>,
+    mut letters: Vec<String>,
+) -> Option<(String, Vec<String>)> {
+    let start = commands.find(|c: char| c == 'L' || c == 'R');
+    match start {
+        None => {
+            if letters.len() == 0 {
+                if commands.len() > 20 {
+                    return None;
+                } else {
+                    return Some((commands.to_string(), sequences));
+                }
+            } else {
+                return None;
+            }
+        }
+        Some(b) => {
+            if letters.len() == 0 {
+                return None;
+            }
+            let letter = letters.remove(0);
+            let mut last = false;
+            for e in b + 1..commands.len() + 1 {
+                if last {
+                    break;
+                }
+                let mut sequence;
+                if e < commands.len() {
+                    if commands.as_bytes()[e] == 'A' as u8 || commands.as_bytes()[e] == 'B' as u8 {
+                        last = true;
+                        sequence = &commands[b..e - 1];
+                    } else if commands.as_bytes()[e] == 'L' as u8
+                        || commands.as_bytes()[e] == 'R' as u8
+                    {
+                        sequence = &commands[b..e - 1];
+                    } else {
+                        continue;
+                    }
+                } else {
+                    sequence = &commands[b..e];
+                }
+                if sequence.len() > 20 {
+                    break;
+                }
+                sequences.push(sequence.to_string());
+                match split_commands(
+                    &commands.replace(sequence, &letter),
+                    sequences.to_vec(),
+                    letters.to_vec(),
+                ) {
+                    None => {
+                        sequences.pop();
+                    }
+                    r => return r,
+                }
+            }
+            None
+        }
+    }
+}
+
 fn main() {
     let memory: Vec<i64> = io::stdin()
         .lock()
@@ -229,7 +292,7 @@ fn main() {
     let mut visited: BTreeSet<(i64, i64)> = BTreeSet::new();
     let mut intersections = vec![];
     while positions.len() > 0 {
-        let mut current_pos = positions.remove(0);
+        let current_pos = positions.remove(0);
         if visited.contains(&current_pos) {
             continue;
         }
@@ -270,48 +333,46 @@ fn main() {
         Some('>') => (1, 0),
         _ => panic!(),
     };
-    let mut dir = 'L';
+    let mut commands = String::new();
     loop {
         match map.get(&(pos.0 + left(d).0, pos.1 + left(d).1)) {
-            Some('#') | Some('L') | Some('R') => {
+            Some('#') => {
                 d = left(d);
-                dir = 'L';
-                print!("L,");
+                commands += "L,";
             }
             _ => match map.get(&(pos.0 + right(d).0, pos.1 + right(d).1)) {
-                Some('#') | Some('L') | Some('R') => {
+                Some('#') => {
                     d = right(d);
-                    dir = 'R';
-                    print!("R,");
+                    commands += "R,";
                 }
                 _ => break,
             },
         }
         let mut distance = 0;
         loop {
-            map.insert(pos, dir);
-            distance += 1;
             match map.get(&(pos.0 + d.0, pos.1 + d.1)) {
-                Some('#') | Some('R') | Some('L') => {}
+                Some('#') => {}
                 _ => break,
             }
+            distance += 1;
             pos = (pos.0 + d.0, pos.1 + d.1);
         }
-        print!("{},", distance);
+        commands += &format!("{},", distance);
     }
-    println!("");
+
+    let letters = vec!["A".to_string(), "B".to_string(), "C".to_string()];
+    let (main_sequence, functions) = split_commands(&commands[..commands.len() - 1], vec![], letters.to_vec()).unwrap();
 
     let mut robot = State::new(&memory);
     robot.memory.insert(0, 2);
     let sequences = [
-        "A,A,B,C,B,C,B,A,C,A\n".to_string(),
-        "R,8,L,12,R,8\n".to_string(),
-        "L,10,L,10,R,8\n".to_string(),
-        "L,12,L,12,L,10,R,10\n".to_string(),
-        "n\n".to_string(),
+        format!("{}\n", main_sequence),
+        format!("{}\n", functions[0]),
+        format!("{}\n", functions[1]),
+        format!("{}\n", functions[2]),
+        "n\n".to_string()
     ];
-    sequences.iter().for_each(|x| assert!(x.len() <= 20));
-    let mut sequence = sequences.join("");
+    let sequence = sequences.join("");
     let mut it = sequence.as_bytes().iter();
     let mut pos = (0, 0);
     let mut map: BTreeMap<(i64, i64), char> = BTreeMap::new();
@@ -338,8 +399,7 @@ fn main() {
                     };
                 }
             }
-            Output::Halt(v) => {
-                println!("{:?} {}", it, v);
+            Output::Halt(_) => {
                 break;
             }
             Output::NeedsInput => match it.next() {
@@ -348,5 +408,4 @@ fn main() {
             },
         }
     }
-    print_map(&map, lower_left, upper_right);
 }
